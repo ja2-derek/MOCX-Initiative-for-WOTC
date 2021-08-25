@@ -123,7 +123,7 @@ static protected function EventListenerReturn ShouldOverride(Object EventData, O
 	if (KilledUnit.GetMyTemplate().CharacterGroupName != 'DarkXComSoldier')
 		return ELR_NoInterrupt;
 
-	if(KilledUnit.IsAlive() && KilledUnit.bBodyRecovered)
+	if(KilledUnit.IsAlive() && (KilledUnit.bBodyRecovered || KilledUnit.GetTeam() == eTeam_XCom)) //fulton'd or was MC'd and evacuated
 	{
 		if(Tuple.Id == 'ExtractCorpses_AwardLoot')	
 			Tuple.Data[0].b = false;  //we'll handle this unit ourselves
@@ -177,7 +177,7 @@ static protected function EventListenerReturn WasMOCXCaptured(Object EventData, 
 		return ELR_NoInterrupt;
 	}
 
-	if(KilledUnit.bBodyRecovered && KilledUnit.IsAlive()) //they were captured, so we can check if XCOM won the capture roll
+	if((KilledUnit.bBodyRecovered || KilledUnit.GetTeam() == eTeam_XCom) && KilledUnit.IsAlive()) //they were captured, so we can check if XCOM won the capture roll
 	{
 
 			for(i = 0; i < DarkXComHQ.Squad.Length; i++)
@@ -213,7 +213,7 @@ static protected function EventListenerReturn WasMOCXCaptured(Object EventData, 
 				LostHP = EnemyUnit.HighestHP - EnemyUnit.LowestHP;
 				NewInfoState = XComGameState_Unit_DarkXComInfo(NewGameState.ModifyStateObject(class'XComGameState_Unit_DarkXComInfo', InfoState.ObjectID));
 
-				if(class'UnitDarkXComUtils'.static.WasCaptureSuccessful(NewInfoState, LostHP))
+				if(class'UnitDarkXComUtils'.static.WasCaptureSuccessful(NewInfoState, LostHP, KilledUnit.GetTeam() == eTeam_XCom))
 				{
 					`log("Dark XCom: unit successfully captured", , 'DarkXCom');
 					class'UnitDarkXComUtils'.static.GiveSoldierToXCOM(EnemyUnit, NewInfoState, NewGameState);
@@ -278,32 +278,34 @@ static function EventListenerReturn IsOwnerDead(Object EventData, Object EventSo
 	local XComGameStateContext_ChangeContainer ChangeContext;
 
 	UnitState = XComGameState_Unit(EventSource);
-	foreach GameState.IterateByClassType(class'XComGameState_Item', ItemState)
-	{
 
-		if(ItemState.OwnerStateObject.ObjectID > 0)
+	ItemState = UnitState.GetItemInSlot(eInvSlot_SecondaryWeapon);
+
+	if(ItemState != none)
+	{
+		if(ItemState.OwnerStateObject.ObjectID > 0 && ItemState.CosmeticUnitRef.ObjectID > 0) // must create a gremlin and must have an owner
 		{
 			History = `XCOMHISTORY;
 			OwnerState = XComGameState_Unit(History.GetGameStateForObjectID(ItemState.OwnerStateObject.ObjectID));
+			CosmeticUnit = XComGameState_Unit(History.GetGameStateForObjectID(ItemState.CosmeticUnitRef.ObjectID));
 
+			if(!CosmeticUnit.IsAlive() ) //no need to kill ourselves if we're already dead
+			{
+					return ELR_NoInterrupt; 
+			}
+					
 			if(UnitState.ObjectID == OwnerState.ObjectID) //owner dead, pls kill us
 			{
-				CosmeticUnit = XComGameState_Unit(History.GetGameStateForObjectID(ItemState.CosmeticUnitRef.ObjectID));
 
-				if(!CosmeticUnit.IsAlive());
-					return ELR_NoInterrupt; //no need to kill ourselves if we're already dead
-					
 				NewGameState = class'XComGameStateContext_ChangeContainer'.static.CreateChangeState("Owner Unit Died");
 				ChangeContext = XComGameStateContext_ChangeContainer(NewGameState.GetContext());
 				ChangeContext.BuildVisualizationFn = ItemState.ItemOwnerDeathVisualization;
 				CosmeticUnit = XComGameState_Unit(NewGameState.ModifyStateObject(CosmeticUnit.Class, CosmeticUnit.ObjectID));
 				CosmeticUnit.SetCurrentStat(eStat_HP, 0);
 				`GAMERULES.SubmitGameState(NewGameState);
-				break; //
 			}
 		}
 
-			
 	}
 
 	return ELR_NoInterrupt;
@@ -394,7 +396,7 @@ static protected function EventListenerReturn CheckForEvac(Object EventData, Obj
 		return ELR_NoInterrupt;
 
 	// if it's a capture, abort
-	if(KilledUnit.bBodyRecovered || !KilledUnit.IsAlive())
+	if((KilledUnit.bBodyRecovered || KilledUnit.GetTeam() == eTeam_XCom) || !KilledUnit.IsAlive())
 		return ELR_NoInterrupt;
 
 
@@ -432,7 +434,7 @@ static protected function EventListenerReturn CheckForCapture(Object EventData, 
 		return ELR_NoInterrupt;
 
 	// if it's NOT a capture, abort
-	if(!KilledUnit.bBodyRecovered || !KilledUnit.IsAlive())
+	if((!KilledUnit.bBodyRecovered && KilledUnit.GetTeam() != eTeam_XCom) || !KilledUnit.IsAlive())
 		return ELR_NoInterrupt;
 
 

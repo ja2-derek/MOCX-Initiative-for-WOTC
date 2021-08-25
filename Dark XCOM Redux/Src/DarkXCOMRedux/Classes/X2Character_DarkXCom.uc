@@ -1,9 +1,16 @@
 class X2Character_DarkXCom extends X2Character config(GameData_CharacterStats);
 
+var config array<name> ModDarkTemplates;
+
+var config(BossData) string UnitRoot;
+var config(BossData) array<name> UnitAbilities;
+var config(BossData) array<name> PrimaryWeaponAbilities;
+var config(BossData) array<name> SecondaryWeaponAbilities;
+
 static function array<X2DataTemplate> CreateTemplates()
 {
 	local array<X2DataTemplate> Templates;
-
+	local name DarkTemplate;
 	`log("DARk XCOM: building characters", ,'DarkXCom');
 	Templates.AddItem(CreateTemplate_DarkSoldier());
 	Templates.AddItem(CreateTemplate_DarkRookie('DarkRookie'));
@@ -30,6 +37,13 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(CreateEliteDarkTemplate('DarkSpecialist'));
 	Templates.AddItem(CreateEliteDarkTemplate('DarkPsiAgent'));
 	Templates.AddItem(CreateEliteDarkTemplate('DarkReclaimed'));
+	
+	foreach default.ModDarkTemplates(DarkTemplate)
+	{
+		Templates.AddItem(CreateDarkTemplate(DarkTemplate));
+		Templates.AddItem(CreateAdvancedDarkTemplate(DarkTemplate));
+		Templates.AddItem(CreateEliteDarkTemplate(DarkTemplate));
+	}
 
 	Templates.AddItem(CreateAdvancedMEC());
 
@@ -38,8 +52,124 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(CreateDarkGremlinMag());
 	Templates.AddItem(CreateDarkGremlinBeam());
 
-
+	Templates.AddItem(CreateMocxLeader()); // allow for creation of a unit that is akin to Iago Van Doorn from Long War
 	return Templates;
+}
+
+
+static function X2CharacterTemplate CreateMocxLeader()
+{
+	local X2CharacterTemplate CharTemplate;
+	local LootReference Loot;
+	local name AbilityName;
+	CharTemplate= new(None, string('MOCX_Leader')) class'X2CharacterTemplate'; CharTemplate.SetTemplateName('MOCX_Leader');;
+
+	// Auto-Loot
+	Loot.ForceLevel = 0;
+	Loot.LootTableName = 'MOCX_BaseLoot';
+	CharTemplate.Loot.LootReferences.AddItem(Loot);
+
+	// Timed Loot
+	Loot.ForceLevel = 0;
+	Loot.LootTableName = 'AdvTrooperM1_TimedLoot';
+	CharTemplate.TimedLoot.LootReferences.AddItem(Loot);
+	Loot.LootTableName = 'AdvTrooperM1_VultureLoot';
+	CharTemplate.VultureLoot.LootReferences.AddItem(Loot);
+
+
+	CharTemplate.UnitSize = 1;
+	CharTemplate.CharacterGroupName = 'DarkXComSoldier';
+	CharTemplate.BehaviorClass = class'XGAIBehavior';
+	CharTemplate.strBehaviorTree = default.UnitRoot;
+	CharTemplate.bCanUse_eTraversal_Normal = true;
+	CharTemplate.bCanUse_eTraversal_ClimbOver = true;
+	CharTemplate.bCanUse_eTraversal_ClimbOnto = true;
+	CharTemplate.bCanUse_eTraversal_ClimbLadder = true;
+	CharTemplate.bCanUse_eTraversal_DropDown = true;
+	CharTemplate.bCanUse_eTraversal_Grapple = false;
+	CharTemplate.bCanUse_eTraversal_Landing = true;
+	CharTemplate.bCanUse_eTraversal_BreakWindow = true;
+	CharTemplate.bCanUse_eTraversal_KickDoor = true;
+	CharTemplate.bCanUse_eTraversal_JumpUp = false;
+	CharTemplate.bCanUse_eTraversal_WallClimb = false;
+	CharTemplate.bCanUse_eTraversal_BreakWall = false;
+	CharTemplate.bCanBeCriticallyWounded = false;
+	CharTemplate.bCanBeTerrorist = false;
+	CharTemplate.bDiesWhenCaptured = true;
+	CharTemplate.bAppearanceDefinesPawn = true;
+	CharTemplate.bIsAfraidOfFire = true;
+	CharTemplate.bIsAlien = false;
+	CharTemplate.bIsAdvent = true;
+	CharTemplate.bIsCivilian = false;
+	CharTemplate.bIsPsionic = false;
+	CharTemplate.bIsRobotic = false;
+	CharTemplate.bIsSoldier = false;
+	CharTemplate.bCanTakeCover = true;
+	CharTemplate.bCanBeCarried = true;
+	CharTemplate.bCanBeRevived = true;
+	CharTemplate.AcquiredPhobiaTemplate = 'FearOfMOCX';
+
+	CharTemplate.bUsePoolSoldiers = true;
+	CharTemplate.bUsePoolDarkVIPs = true; //these two variables let us use character pool chars
+
+	CharTemplate.bIsTooBigForArmory = false;
+	CharTemplate.bStaffingAllowed = false;
+	CharTemplate.bAppearInBase = false; // Do not appear as filler crew or in any regular staff slots throughout the base
+	CharTemplate.bWearArmorInBase = false;
+	
+	CharTemplate.bAllowRushCam = true;
+	CharTemplate.strMatineePackages.AddItem("CIN_Soldier");
+	//CharTemplate.strIntroMatineeSlotPrefix = "Char";
+	//CharTemplate.strLoadingMatineeSlotPrefix = "Soldier";
+	CharTemplate.strMatineePackages.AddItem("CIN_Advent");
+	CharTemplate.RevealMatineePrefix = "CIN_Advent_Trooper";
+	CharTemplate.GetRevealMatineePrefixFn = GetAdventMatineePrefix;
+	
+	//CharTemplate.DefaultSoldierClass = 'Rookie';
+	CharTemplate.DefaultLoadout = 'DarkLeader';
+
+	//CharTemplate.RequiredLoadout = 'RequiredSoldier';
+	CharTemplate.BehaviorClass=class'XGAIBehavior';
+
+	CharTemplate.Abilities.AddItem('CarryUnit');
+	CharTemplate.Abilities.AddItem('PutDownUnit');
+	//CharTemplate.Abilities.AddItem('Evac');
+	CharTemplate.Abilities.AddItem('Knockout');
+	CharTemplate.Abilities.AddItem('KnockoutSelf');
+	CharTemplate.Abilities.AddItem('HunkerDown');
+	CharTemplate.Abilities.AddItem('DarkEventAbility_HealthBoost');
+	CharTemplate.Abilities.AddItem('RM_VanishReveal');
+	//CharTemplate.Abilities.AddItem('FakeBleedout');
+
+	foreach default.UnitAbilities(AbilityName)
+	{
+		CharTemplate.Abilities.AddItem(AbilityName);
+	}
+	foreach default.PrimaryWeaponAbilities(AbilityName)
+	{
+		CharTemplate.Abilities.AddItem(AbilityName);
+	}
+	foreach default.SecondaryWeaponAbilities(AbilityName)
+	{
+		CharTemplate.Abilities.AddItem(AbilityName);
+	}
+	//CharTemplate.AddTemplateAvailablility(CharTemplate.BITFIELD_GAMEAREA_Multiplayer); // Allow in MP!
+	//CharTemplate.MPPointValue = CharTemplate.XpKillscore * 10;
+
+	CharTemplate.strTargetIconImage = "UILibrary_MOCX.TargetIcons.target_mocx";
+
+	//CharTemplate.CustomizationManagerClass = class'XComCharacterCustomization_Hybrid';
+	//CharTemplate.UICustomizationMenuClass = class'UICustomize_HybridMenu';
+	//CharTemplate.UICustomizationInfoClass = class'UICustomize_HybridInfo';
+	//CharTemplate.UICustomizationPropsClass = class'UICustomize_HybridProps';
+	CharTemplate.CharacterGeneratorClass = class'XGCharacterGenerator_DarkXCom';
+	
+	CharTemplate.PhotoboothPersonality = 'Personality_Normal';
+
+	//CharTemplate.OnEndTacticalPlayFn = SparkEndTacticalPlay;
+	//CharTemplate.GetPhotographerPawnNameFn = GetSparkPawnName;
+
+	return CharTemplate;
 }
 
 static function X2CharacterTemplate CreateDarkGremlinMag()
@@ -97,7 +227,6 @@ static function X2CharacterTemplate CreateDarkGremlinMag()
 	CharTemplate.HQOnscreenOffset.X = 0;
 	CharTemplate.HQOnscreenOffset.Y = 0;
 	CharTemplate.HQOnscreenOffset.Z = 96.0f;
-
 	CharTemplate.Abilities.AddItem('Panicked');
 //	CharTemplate.Abilities.AddItem('GremlinForceDeath');
 
@@ -153,7 +282,6 @@ static function X2CharacterTemplate CreateDarkGremlinBeam()
 	CharTemplate.strPawnArchetypes.AddItem("MOCX_NewAdventWeapons.ARC_GameUnit_GremlinMk3_Advent");
 	CharTemplate.bAllowRushCam = false;
 	CharTemplate.SoloMoveSpeedModifier = 2.0f;
-
 	CharTemplate.HQIdleAnim = "HL_Idle";
 	CharTemplate.HQOffscreenAnim = "HL_FlyUpStart";
 	CharTemplate.HQOnscreenAnimPrefix = "HL_FlyDwn";
@@ -232,7 +360,7 @@ static function X2CharacterTemplate CreateAdvancedMEC()
 	CharTemplate.Abilities.AddItem('AbsorptionField');
 	CharTemplate.Abilities.AddItem('RM_Intimidate');
 	CharTemplate.Abilities.AddItem('DarkEventAbility_Barrier');
-	CharTemplate.Abilities.AddItem('OddNerfTwo');
+	//CharTemplate.Abilities.AddItem('OddNerfTwo');
 	CharTemplate.strHackIconImage = "UILibrary_Common.TargetIcons.Hack_robot_icon";
 	CharTemplate.strTargetIconImage = "UILibrary_MOCX.TargetIcons.target_mocx";
 
@@ -287,7 +415,7 @@ static function X2CharacterTemplate CreateTemplate_DarkRookie(name templatename)
 	CharTemplate.bIsRobotic = false;
 	CharTemplate.bIsSoldier = false;
 	CharTemplate.bCanTakeCover = true;
-	CharTemplate.bCanBeCarried = false;
+	CharTemplate.bCanBeCarried = true;
 	CharTemplate.bCanBeRevived = true;
 	CharTemplate.AcquiredPhobiaTemplate = 'FearOfMOCX';
 
@@ -501,7 +629,7 @@ static function X2CharacterTemplate CreateDarkTemplate(Name DarkName)
 	CharTemplate.bIsRobotic = false;
 	CharTemplate.bIsSoldier = false;
 	CharTemplate.bCanTakeCover = true;
-	CharTemplate.bCanBeCarried = false;
+	CharTemplate.bCanBeCarried = true;
 	CharTemplate.bCanBeRevived = true;
 	CharTemplate.AcquiredPhobiaTemplate = 'FearOfMOCX';
 
@@ -537,7 +665,9 @@ static function X2CharacterTemplate CreateDarkTemplate(Name DarkName)
 	CharTemplate.Abilities.AddItem('RM_VanishReveal');
 	CharTemplate.Abilities.AddItem('AutoCaptureMOCX');
 	CharTemplate.Abilities.AddItem('DarkEventAbility_HealthBoost');
-	CharTemplate.Abilities.AddItem('OddNerfOne');
+	//CharTemplate.Abilities.AddItem('OddNerfOne');
+	CharTemplate.Abilities.AddItem('NoBleedoutDetection');
+	CharTemplate.Abilities.AddItem('Evac'); //retain this for soldiers being MC'd
 	//CharTemplate.AddTemplateAvailablility(CharTemplate.BITFIELD_GAMEAREA_Multiplayer); // Allow in MP!
 	//CharTemplate.MPPointValue = CharTemplate.XpKillscore * 10;
 
@@ -611,7 +741,7 @@ static function X2CharacterTemplate CreateAdvancedDarkTemplate(Name DarkName)
 	CharTemplate.bIsRobotic = false;
 	CharTemplate.bIsSoldier = false;
 	CharTemplate.bCanTakeCover = true;
-	CharTemplate.bCanBeCarried = false;
+	CharTemplate.bCanBeCarried = true;
 	CharTemplate.bCanBeRevived = true;
 
 	CharTemplate.bUsePoolSoldiers = true;
@@ -647,7 +777,9 @@ static function X2CharacterTemplate CreateAdvancedDarkTemplate(Name DarkName)
 	CharTemplate.Abilities.AddItem('RM_VanishReveal');
 	CharTemplate.Abilities.AddItem('AutoCaptureMOCX');
 	CharTemplate.Abilities.AddItem('DarkEventAbility_HealthBoost');
-	CharTemplate.Abilities.AddItem('OddNerfTwo');
+	//CharTemplate.Abilities.AddItem('OddNerfTwo');
+	CharTemplate.Abilities.AddItem('NoBleedoutDetection');
+	CharTemplate.Abilities.AddItem('Evac'); //retain this for soldiers being MC'd
 	//CharTemplate.AddTemplateAvailablility(CharTemplate.BITFIELD_GAMEAREA_Multiplayer); // Allow in MP!
 	//CharTemplate.MPPointValue = CharTemplate.XpKillscore * 10;
 
@@ -720,7 +852,7 @@ static function X2CharacterTemplate CreateEliteDarkTemplate(Name DarkName)
 	CharTemplate.bIsRobotic = false;
 	CharTemplate.bIsSoldier = false;
 	CharTemplate.bCanTakeCover = true;
-	CharTemplate.bCanBeCarried = false;
+	CharTemplate.bCanBeCarried = true;
 	CharTemplate.bCanBeRevived = true;
 	CharTemplate.AcquiredPhobiaTemplate = 'FearOfMOCX';
 
@@ -756,7 +888,9 @@ static function X2CharacterTemplate CreateEliteDarkTemplate(Name DarkName)
 	CharTemplate.Abilities.AddItem('RM_VanishReveal');
 	CharTemplate.Abilities.AddItem('AutoCaptureMOCX');
 	CharTemplate.Abilities.AddItem('DarkEventAbility_HealthBoost');
-	CharTemplate.Abilities.AddItem('OddNerfThree');
+	//CharTemplate.Abilities.AddItem('OddNerfThree');
+	CharTemplate.Abilities.AddItem('NoBleedoutDetection');
+	CharTemplate.Abilities.AddItem('Evac'); //retain this for soldiers being MC'd
 	//CharTemplate.AddTemplateAvailablility(CharTemplate.BITFIELD_GAMEAREA_Multiplayer); // Allow in MP!
 	//CharTemplate.MPPointValue = CharTemplate.XpKillscore * 10;
 

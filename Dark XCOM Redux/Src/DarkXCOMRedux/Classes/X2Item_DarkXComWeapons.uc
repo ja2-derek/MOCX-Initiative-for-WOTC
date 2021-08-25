@@ -341,20 +341,21 @@ static function X2DataTemplate CreateDarkJack(name TemplateName)
 	Template.PairedSlot = eInvSlot_TertiaryWeapon;
 
 	if(TemplateName == 'DarkJack_MG')
+	{		
 		Template.PairedTemplateName = 'DarkJackLeft_MG';
-
-	if(TemplateName == 'DarkJack_BM')
+	}
+	if(TemplateName == 'DarkJack_BM'){
 		Template.PairedTemplateName = 'DarkJackLeft_BM';
-
+	}
 	Template.ItemCat = 'weapon';
 	Template.WeaponCat = 'wristblade';
 
-	if(TemplateName == 'DarkJack_MG')
+	if(TemplateName == 'DarkJack_MG'){
 		Template.WeaponTech = 'magnetic';
-
-	if(TemplateName == 'DarkJack_BM')
+	}
+	if(TemplateName == 'DarkJack_BM'){
 		Template.WeaponTech = 'beam';
-
+	}
 	Template.strImage = "img:///UILibrary_XPACK_StrategyImages.Inv_MagSGauntlet";
 	Template.EquipSound = "Sword_Equip_Magnetic";
 	Template.InventorySlot = eInvSlot_SecondaryWeapon;
@@ -1215,7 +1216,7 @@ static function X2DataTemplate CreateTemplate_DarkXCom_SniperRifle(name Template
 	if (TemplateName == 'Dark_SniperRifle_MG')
 	{
 		// This all the resources; sounds, animations, models, physics, the works.
-		Template.GameArchetype = "MOCX_NewAdventWeapons.WP_SniperRifle_Long_MG_Advent";
+		Template.GameArchetype = "MOCX_NewAdventWeapons.WP_SniperRifle_MG_Advent";
 	}
 
 	if (TemplateName == 'Dark_SniperRifle_CG')

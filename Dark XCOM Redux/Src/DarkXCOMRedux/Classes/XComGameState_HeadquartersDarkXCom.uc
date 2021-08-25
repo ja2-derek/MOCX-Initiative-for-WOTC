@@ -69,6 +69,13 @@ var config int AdvancedMECChance; //what's the chance of an advanced MEC deployi
 
 var config int RebelChance; //if above 0, roll this against 100. If result is less than that, we spawn into eTeam_One.
 
+
+// pod configuration
+var config bool ManualEncounterZone; // use this to have the .ini control the sizes
+var config int	configAlongLOP;
+var config int	configFromLOP;
+var config int configEncounterZoneWidth;
+var config int configEncounterZoneDepthOverride;
 function bool ShouldDoFailsafe()
 {
 	if(bSITREPActive && NumOfMissionsSITREPActive > 3) //after 3 missions, we assume the player has either done the SITREP or skipped it
@@ -825,9 +832,12 @@ static function PreMissionUpdate(XComGameState NewGameState, XComGameState_Missi
 	if(!IsPlotMission || (IsPlotMission && MissionState.GeneratedMission.Mission.sType == "Dark_OffsiteStorage")) //off site storage is defended by regular ADVENT augmented by a permanent MOCX attachment
 	{
 		DarkXComHQ.FillSquad(NewGameState);
-		If(DarkXComHQ.GetCurrentSquadSize() > 0)
+		If(DarkXComHQ.GetCurrentSquadSize() > 0) 
 		{
-			DarkXComHQ.UpdateSpawningData(NewGameState, MissionState, IsPlotMission);
+			if(IsPlotMission)
+			{
+				DarkXComHQ.UpdateSpawningData(NewGameState, MissionState, IsPlotMission); // MOCX spawns in story missions normally, comes in as reinforcements otherwise
+			}
 			DarkXComHQ.NumSinceAppearance = 0;
 		}
 		else
@@ -900,7 +910,7 @@ function FillSquad(XcomGameState NewGameState)
 
 			if(NewInfoState.bIsAlive && NewInfoState.GetRecoveryPoints() <= 0 && !NewInfoState.bInSquad) //is alive and is done healing
 			{
-			`log("Added following MOCX soldier to squad: " $ class'UnitDarkXComUtils'.static.GetFullName(Unit), ,'DarkXCom');
+				`log("Added following MOCX soldier to squad: " $ class'UnitDarkXComUtils'.static.GetFullName(Unit), ,'DarkXCom');
 				Squad.AddItem(Crew[i]);
 				NewInfoState.bInSquad = true;
 				NewInfoState.bAlreadyHandled = false;
@@ -990,11 +1000,23 @@ function UpdateSpawningData(XComGameState NewGameState, XComGameState_MissionSit
 		EncounterInfo.EncounterID='MOCX_Teamx10';
 */
 
-	AlongLOP = `SYNC_RAND(15) - `SYNC_RAND(9) + 10;
-	FromLOP = `SYNC_RAND(15) - `SYNC_RAND(9) + 10;
-	EncounterInfo.EncounterZoneOffsetAlongLOP = AlongLOP; //randomized locations
-	EncounterInfo.EncounterZoneOffsetFromLOP = FromLOP;
-	EncounterInfo.EncounterZoneWidth = 12.0;
+	AlongLOP = `SYNC_RAND(25) - `SYNC_RAND(15);
+	AlongLOP = min(25, AlongLOP);
+	FromLOP = `SYNC_RAND(25) - `SYNC_RAND(15) - 5;
+	if(!ManualEncounterZone)
+	{
+		EncounterInfo.EncounterZoneOffsetAlongLOP = AlongLOP; //randomized locations
+		EncounterInfo.EncounterZoneOffsetFromLOP = FromLOP;
+		EncounterInfo.EncounterZoneWidth = 50;
+		EncounterInfo.EncounterZoneDepthOverride = 20;
+	}
+	else
+	{
+		EncounterInfo.EncounterZoneOffsetAlongLOP = configAlongLOP; //randomized locations
+		EncounterInfo.EncounterZoneOffsetFromLOP = configFromLOP;
+		EncounterInfo.EncounterZoneWidth = configEncounterZoneWidth;
+		EncounterInfo.EncounterZoneDepthOverride = configEncounterZoneDepthOverride;
+	}
 
 	TacticalMissionManager = `TACTICALMISSIONMGR;
 	SpawnManager = `SPAWNMGR;
@@ -1139,7 +1161,7 @@ function UpdateSpawningData(XComGameState NewGameState, XComGameState_MissionSit
 //---------------------------------------------------------------------------------------
 // GRAND FINALE
 //-----------------------------------
-function SpawnSquad(XComGameState NewGameState, XComGameState_MissionSite MissionState)
+function SpawnSquad(XComGameState NewGameState, XComGameState_MissionSite MissionState, optional bool HasBossSpawn)
 {
 	local X2SelectedEncounterData NewEncounter, EmptyEncounter;
 	local XComTacticalMissionManager TacticalMissionManager;
@@ -1189,11 +1211,23 @@ function SpawnSquad(XComGameState NewGameState, XComGameState_MissionSite Missio
 		EncounterInfo.EncounterID='MOCX_Teamx10';*/
 
 
-	AlongLOP = `SYNC_RAND(15) - `SYNC_RAND(9) + 5;
-	FromLOP = `SYNC_RAND(15) - `SYNC_RAND(9) + 5;
-	EncounterInfo.EncounterZoneOffsetAlongLOP = AlongLOP; //randomized locations
-	EncounterInfo.EncounterZoneOffsetFromLOP = FromLOP;
-	EncounterInfo.EncounterZoneWidth = 16.0;
+	AlongLOP = `SYNC_RAND(25) - `SYNC_RAND(15) + 5;
+	FromLOP = `SYNC_RAND(25) - `SYNC_RAND(15) - 5;
+	if(!ManualEncounterZone)
+	{
+		EncounterInfo.EncounterZoneOffsetAlongLOP = AlongLOP; //randomized locations
+		EncounterInfo.EncounterZoneOffsetFromLOP = FromLOP;
+		EncounterInfo.EncounterZoneWidth = 50;
+		EncounterInfo.EncounterZoneDepthOverride = 20;
+	}
+	else
+	{
+		EncounterInfo.EncounterZoneOffsetAlongLOP = configAlongLOP; //randomized locations
+		EncounterInfo.EncounterZoneOffsetFromLOP = configFromLOP;
+		EncounterInfo.EncounterZoneWidth = configEncounterZoneWidth;
+		EncounterInfo.EncounterZoneDepthOverride = configEncounterZoneDepthOverride;
+	}
+
 
 	TacticalMissionManager = `TACTICALMISSIONMGR;
 	SpawnManager = `SPAWNMGR;
@@ -1216,6 +1250,10 @@ function SpawnSquad(XComGameState NewGameState, XComGameState_MissionSite Missio
 		}
 	}
 
+	if(HasBossSpawn)
+	{
+		NamesToAdd.AddItem('MOCX_Leader');
+	}
 	strTechTierSuffix = GetTierSuffixFromTech();
 	`log("Dark XCom: we are at tier " $ strTechTierSuffix, ,'DarkXCom');
 	for(i = 0; i < CurrentSquad.Length; i++)

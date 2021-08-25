@@ -23,7 +23,7 @@ var config name					WeaponLoadout; //armor is handled in the base character temp
 var config string				IconImage;
 var config int                 NumInDeck; //how many entries this class should have in the class decks
 var config bool					IsHeroClass; //this lets a unit get multiple abilities per level up
-var config name					CounterpartClass; //what class should this unit be, if it's still in the game?
+var config array<name>					CounterpartClass; //what class should this unit be, if it's still in the game?
 
 var localized string			DisplayName;
 var localized string			ClassSummary;

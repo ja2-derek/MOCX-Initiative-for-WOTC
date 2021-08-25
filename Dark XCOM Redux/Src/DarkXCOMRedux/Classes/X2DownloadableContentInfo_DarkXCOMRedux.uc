@@ -484,7 +484,10 @@ static function FinalizeUnitAbilitiesForInit(XComGameState_Unit UnitState, out a
 	local XComGameState_Unit_DarkXComInfo SquadUnitInfoState;
 	local bool bUnitIsStrategyUnit;
 	//name variable
-	local name LoadoutName, ArmorName;
+	local name LoadoutName, ArmorName, LeaderAbility;
+	// variables for MOCX leader
+	local AbilitySetupData Data, EmptyData;
+	local int AbilityIndex;
 
 	// only do our handling for MOCX units
 	if (!IsValidDarkTemplate(UnitState.GetMyTemplateName()))
@@ -510,6 +513,40 @@ static function FinalizeUnitAbilitiesForInit(XComGameState_Unit UnitState, out a
 			// and apply stat bonuses
 			ApplyStatBonuses(UnitState, SquadUnitState, SquadUnitInfoState);
 		}
+	}
+	else if(UnitState.GetMyTemplateName() == 'MOCX_Leader')
+	{ // more traditional ability handling, just making some abilities go where they should be
+
+		foreach class'X2Character_DarkXCom'.default.PrimaryWeaponAbilities(LeaderAbility)
+		{
+			AbilityIndex = SetupData.Find('TemplateName', LeaderAbility); //this should be here already else there's a problem
+			if(AbilityIndex != INDEX_NONE)
+			{
+				SetupData[AbilityIndex].SourceWeaponRef = UnitState.GetItemInSlot(eInvSlot_PrimaryWeapon).GetReference();
+			}
+			else
+			{
+				`log("Dark XCOM: error trying to assign weapon reference for MOCX Leader's weapon abilities, it was not in their ability setup data " @ LeaderAbility, ,'DarkXCom');
+
+			}
+
+		}
+
+		foreach class'X2Character_DarkXCom'.default.SecondaryWeaponAbilities(LeaderAbility)
+		{
+			AbilityIndex = SetupData.Find('TemplateName', LeaderAbility); //this should be here already else there's a problem
+			if(AbilityIndex != INDEX_NONE)
+			{
+				SetupData[AbilityIndex].SourceWeaponRef = UnitState.GetItemInSlot(eInvSlot_PrimaryWeapon).GetReference();
+			}
+			else
+			{
+				`log("Dark XCOM: error trying to assign weapon reference for MOCX Leader's weapon abilities, it was not in their ability setup data " @ LeaderAbility, ,'DarkXCom');
+
+			}
+
+		}
+
 	}
 	else
 	{
@@ -620,12 +657,14 @@ static function bool FindSquadUnitForCombatUnit(const XComGameState_Unit CombatU
 			TempUnit = XComGameState_Unit(History.GetGameStateForObjectID(DarkXComHQ.Squad[i].ObjectID));
 			// pass start state to optionally retrieve any updated state
 			TempInfo = class'UnitDarkXComUtils'.static.GetDarkXComComponent(TempUnit, StartState);
-			if (TempInfo != none && TempInfo.bInSquad && !TempInfo.bAlreadyHandled && MatchNames(CombatUnit, TempInfo.GetClassName()))
+			if (TempInfo != none && TempInfo.bInSquad && !TempInfo.bAlreadyHandled && !class'UnitDarkXComUtils'.static.CombatUnitAlreadyUsed(DarkXComHQ, CombatUnit.GetReference().ObjectID) &&
+			 MatchNames(CombatUnit, TempInfo.GetClassName()))
 			{
 				SquadUnitState = XComGameState_Unit(StartState.ModifyStateObject(class'XComGameState_Unit', TempUnit.ObjectID));
 				SquadUnitInfoState = XComGameState_Unit_DarkXComInfo(StartState.ModifyStateObject(class'XComGameState_Unit_DarkXComInfo', TempInfo.ObjectID));
 				SquadUnitInfoState.bAlreadyHandled = true;
 				SquadUnitInfoState.AssignedUnit = CombatUnit.GetReference();
+				`log(TempUnit.GetFullName() $ " with the class " $ SquadUnitInfoState .GetClassName() $ " now has the following object ID for its combat unit: " $ CombatUnit.GetReference().ObjectID, ,'DarkXCom');
 				return true;
 			}
 		}
@@ -741,6 +780,12 @@ static function GatherAbilitiesForUnit(XComGameState_Unit StrategyUnitState, XCo
 			Data.Template = AbilityTemplate;
 			if (EarnedSoldierAbilities[i].ApplyToWeaponSlot != eInvSlot_Unknown)
 			{
+
+				if(EarnedSoldierAbilities[i].AbilityName == 'Retribution' && EarnedSoldierAbilities[i].ApplyToWeaponSlot != eInvSlot_SecondaryWeapon)
+				{
+					`log("This unit had Retribution but it was not applied to the secondary weapon slot: fixing.");
+					EarnedSoldierAbilities[i].ApplyToWeaponSlot = eInvSlot_SecondaryWeapon;
+				}
 				foreach CurrentInventory(InventoryItem)
 				{
 					if (InventoryItem.bMergedOut)
@@ -1027,17 +1072,20 @@ static event OnPostMission()
 				// bit of naive code here, but it works in our case. We don't want to count mimic beacons, bonus advent / resistance units, ...
 				if (KilledUnit.IsSoldier())
 				{
-					InfoState.KilledXComUnits.AddItem(TacticalUnitKills[i]);
+					NewInfoState.KilledXComUnits.AddItem(TacticalUnitKills[i]);
 				}
 			}
 
-			if((!EnemyUnit.IsAlive() || EnemyUnit.bBodyRecovered) && EnemyUnit != none)
+			if((!EnemyUnit.IsAlive() || EnemyUnit.bBodyRecovered || NewInfoState.bRecruited) && EnemyUnit != none)
 			{
-				class'UnitDarkXComUtils'.static.KillDarkSoldier(NewInfoState, EnemyUnit.bBodyRecovered);
+				class'UnitDarkXComUtils'.static.KillDarkSoldier(NewInfoState, NewInfoState.bRecruited);
 				`log("Dark XCOM: killed the following unit - " $ class'UnitDarkXComUtils'.static.GetFullName(CurrentDarkUnit), ,'DarkXCom');
 			}
 			
-			if((EnemyUnit.IsAlive() && !EnemyUnit.bBodyRecovered) && EnemyUnit.IsInjured() && EnemyUnit != none)
+			if(((EnemyUnit.IsAlive() || EnemyUnit.IsBleedingOut())
+				 && !NewInfoState.bRecruited) //must be alive or bleeding out (game logic is weird about this), and not captured by XCOM
+				  && EnemyUnit.IsInjured()
+				   && EnemyUnit != none)
 			{
 				`log("Dark XCOM: this unit was considered to only be injured - " $  class'UnitDarkXComUtils'.static.GetFullName(CurrentDarkUnit), ,'DarkXCom');
 				NewInfoState.ApplyRecovery(EnemyUnit, DarkXComHQ);
@@ -1172,10 +1220,10 @@ static function CheckForPosterUpdates()
 	local StateObjectReference OwningUnit, AliveMOCX;
 	local XComGameState_HeadquartersDarkXCom DarkXComHQ;
 	local XComGameState_BattleData BattleData;
-
+	local array<StateObjectReference>		DeadSquad;
 	AutoGen = class'X2Photobooth_MOCXStrategyAutoGen'.static.GetMOCXAutoGen();
 	History = `XCOMHISTORY;
-
+	DeadSquad.Length = 0;
 	// Search for any MOCX soldiers that have more kills now than when this game session started (tactical end game)
 	// and request updated posters for units that have a changed number of kills
 	// we can do it that way because we handle kills in OnPostMission
@@ -1213,7 +1261,7 @@ static function CheckForPosterUpdates()
 				{
 				`log("Dark XCOM: making poster out of survivor", ,'DarkXCom');
 				OwningUnit.ObjectID = AliveMOCX.ObjectID;
-				AutoGen.AddRequestSingleUnit(OwningUnit, eMOCXAGT_PromotedSoldier);
+				AutoGen.AddRequestSingleUnit(OwningUnit, eMOCXAGT_SoldierSurvived);
 				}
 
 				//if they were captured by XCOM, make a memorial poster for them
@@ -1542,6 +1590,33 @@ exec function RankUpMOCXCrew()
 
 }
 
+exec function PrintMOCXCrew()
+{
+	local int i;
+	local XComGameState_Unit Unit;
+	local XComGameState_Unit_DarkXComInfo InfoState;
+	local XComGameState_HeadquartersDarkXCOM DarkXComHQ;
+	local XComGameStateHistory History;
+	History = class'XComGameStateHistory'.static.GetGameStateHistory();
+
+
+	DarkXComHQ = XComGameState_HeadquartersDarkXCOM(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersDarkXCOM'));
+
+	for(i = 0; i < DarkXComHQ.Crew.Length; i++)
+	{
+
+		Unit = XComGameState_Unit(HISTORY.GetGameStateForObjectID(DarkXComHQ.Crew[i].ObjectID));
+		InfoState = class'UnitDarkXComUtils'.static.GetDarkXComComponent(Unit);
+
+		if(InfoState != none)
+		{
+
+			class'Helpers'.static.OutputMsg("DarkXCOMHQ unit state: " $ Unit.GetFullName() $ " has the following info: Class - " $ InfoState.GetClassName() $ " at the rank of " $ InfoState.GetRank());
+		}
+
+	}
+
+}
 
 exec function MOCXPosterizeOneUnit()
 {
@@ -2418,3 +2493,123 @@ exec function X2GrantAbilityToSecondary(name AbilityName)
 		}		
 	}
 }
+
+
+// Start Issue #278
+/// <summary>
+/// Called from XComGameState_AIReinforcementSpawner:OnReinforcementSpawnerCreated
+/// SourceObject is the calling function's BattleData, as opposed to the original hook, which passes MissionSiteState. BattleData contains MissionSiteState
+/// Added optional ReinforcementState to modify reinforcement conditions
+/// Encounter Data is modified immediately after being generated, before validation is performed on spawn visualization based on pod conditions
+/// </summary>
+static function PostReinforcementCreation(out name EncounterName, out PodSpawnInfo Encounter, int ForceLevel, int AlertLevel, optional XComGameState_BaseObject SourceObject, optional XComGameState_BaseObject ReinforcementState)
+{
+	local XComGameStateHistory History;
+	local XComGameState_HeadquartersDarkXCom DarkXComHQ;
+	local int RebellionChance;
+	local int iNumSld, i;
+	local string strTechTierSuffix;
+	local XComGameState_Unit Unit;
+	local XComGameState_Unit_DarkXComInfo InfoState;
+	local array<Name> NamesToAdd;
+	local float AlongLOP, FromLOP;
+	local XComGameState_MissionSite MissionState;
+	local XComGameState_BattleData BattleState;
+
+	switch (EncounterName) //we should only go forward if we have our pod to spawn
+	{
+		case 'MOCXDummiesX4':
+			break;
+		default:
+			return;
+	}
+	`log("Altering MOCXDummiesX4 pod to represent actual MOCX squad", ,'DarkXCom');
+	History = `XCOMHISTORY;
+	DarkXComHQ = XComGameState_HeadquartersDarkXCOM(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersDarkXCOM'));
+	
+	BattleState = XComGameState_BattleData(SourceObject);
+	MissionState = XComGameState_MissionSite(History.GetGameStateForObjectID(BattleState.m_iMissionID));
+	iNumSld = Clamp(DarkXComHQ.GetMaxSquadSize(), 2, 10);
+	Encounter.EncounterID = name("MOCX_Teamx" $ iNumSld);	
+	EncounterName = Encounter.EncounterID;
+	AlongLOP = `SYNC_RAND_STATIC(25) - `SYNC_RAND_STATIC(15);
+	AlongLOP = min(25, AlongLOP);
+	FromLOP = `SYNC_RAND_STATIC(25) - `SYNC_RAND_STATIC(15) - 5;
+	if(!class'XComGameState_HeadquartersDarkXCOM'.default.ManualEncounterZone)
+	{
+		Encounter.EncounterZoneOffsetAlongLOP = AlongLOP; //randomized locations
+		Encounter.EncounterZoneOffsetFromLOP = FromLOP;
+		Encounter.EncounterZoneWidth = 50;
+		Encounter.EncounterZoneDepth = 20;
+	}
+	else
+	{
+		Encounter.EncounterZoneOffsetAlongLOP = class'XComGameState_HeadquartersDarkXCOM'.default.configAlongLOP; //randomized locations
+		Encounter.EncounterZoneOffsetFromLOP = class'XComGameState_HeadquartersDarkXCOM'.default.configFromLOP;
+		Encounter.EncounterZoneWidth = class'XComGameState_HeadquartersDarkXCOM'.default.configEncounterZoneWidth;
+		Encounter.EncounterZoneDepth = class'XComGameState_HeadquartersDarkXCOM'.default.configEncounterZoneDepthOverride;
+	}
+
+	//TacticalMissionManager.GetConfigurableEncounter( EncounterInfo.EncounterID, Encounter, MissionState.SelectedMissionData.ForceLevel, MissionState.SelectedMissionData.AlertLevel );
+	Encounter.MaxGroupSize = DarkXComHQ.GetMaxSquadSize();
+
+	if(DarkXComHQ.bAdvancedMECs)
+	{
+		i = `SYNC_RAND_STATIC(100);
+		if(i <= class'XComGameState_HeadquartersDarkXCOM'.default.AdvancedMECChance)
+		{
+			NamesToAdd.AddItem('AdvMec_MOCX');
+		}
+
+	}
+	strTechTierSuffix = DarkXComHQ.GetTierSuffixFromTech();
+	`log("Dark XCom: we are at tier " $ strTechTierSuffix, ,'DarkXCom');
+	for(i = 0; i < DarkXComHQ.GetCurrentSquadSize(); i++)
+	{
+		Unit = XComGameState_Unit(History.GetGameStateForObjectID(DarkXComHQ.Squad[i].ObjectID));
+		InfoState = class'UnitDarkXComUtils'.static.GetDarkXComComponent(Unit);
+
+		`log("Dark XCom: found soldier class - " $ InfoState.GetClassName(), ,'DarkXCom');
+		// mocx soldier templates upgrade their equipment via tech
+		NamesToAdd.AddItem(name(InfoState.GetClassName() $ strTechTierSuffix));
+	}
+
+
+	if(NamesToAdd.Length < DarkXComHQ.GetMaxSquadSize())
+	{
+		for(i = NamesToAdd.Length; i < DarkXComHQ.GetMaxSquadSize(); i++)
+		{
+			if(MissionState.SelectedMissionData.ForceLevel < 9)
+				NamesToAdd.AddItem('DarkRookie'); //spawning rookies to fill in gaps
+
+			if(MissionState.SelectedMissionData.ForceLevel < 15 && MissionState.SelectedMissionData.ForceLevel > 9)
+				NamesToAdd.AddItem('DarkRookie_M2'); //spawning rookies to fill in gaps
+
+			if(MissionState.SelectedMissionData.ForceLevel >= 15)
+				NamesToAdd.AddItem('DarkRookie_M3'); //spawning rookies to fill in gaps
+
+		}
+
+	}
+
+	Encounter.SelectedCharacterTemplateNames = NamesToAdd;
+
+
+	if(class'XComGameState_HeadquartersDarkXCOM'.default.RebelChance > 0) // if we're here, we're not doing a plot mission so
+	{
+		RebellionChance = `SYNC_RAND_STATIC(100);
+
+		if(RebellionChance < class'XComGameState_HeadquartersDarkXCOM'.default.RebelChance){
+			Encounter.Team = eTeam_One; //rebellion team
+		}
+		else{
+			Encounter.Team = eTeam_Alien; //loyalist team
+		}
+	}
+	else
+	{
+		Encounter.Team = eTeam_Alien; //loyalist team
+	}
+	//Encounter.ReinforcementCountdown = 1;
+}
+// End Issue #278

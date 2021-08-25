@@ -14,41 +14,190 @@ var config int AWCLimit; //how many AWC abilities can a MOCX soldier have?
 var config int RankPenalty;
 var config int InjuryBonus;
 
+static function bool CombatUnitAlreadyUsed(XComGameState_HeadquartersDarkXCom DarkXComHQ, int ObjectID)
+{
+	local XComGameState_Unit_DarkXComInfo InfoState;
+	local array<StateObjectReference> Squad;
+	local XComGameState_Unit CurrentDarkUnit;
+	local XComGameStateHistory History;
+	local int i;
+	Squad = DarkXCOmHq.Squad;
+	History = `XCOMHistory;
+	for(i = 0; i < DarkXComHQ.Squad.Length; i++)
+	{
+			CurrentDarkUnit = XComGameState_Unit(History.GetGameStateForObjectID(DarkXComHQ.Squad[i].ObjectID));
+			InfoState = class'UnitDarkXComUtils'.static.GetDarkXComComponent(CurrentDarkUnit);
+			if(InfoState != none)
+			{
+				if(InfoState.AssignedUnit.ObjectID == ObjectID)
+				{
+					return true;
+				}
+			}
+	}
+
+	return false;
+}
+static function bool AlreadySpawnedSquad(XComGameState_HeadquartersDarkXCom DarkXComHQ)
+{
+	local XComGameState_Unit_DarkXComInfo InfoState;
+	local XComGameSTate_Unit CurrentDarkUnit;
+	local array<StateObjectReference> Squad;
+	local XcomGameStateHistory History;
+	local int i;
+	History = `XCOMHistory;
+	if(DarkXCOMHq.Squad.Length > 0)
+	{
+		for(i = 0; i < DarkXComHQ.Squad.Length; i++)
+		{
+			CurrentDarkUnit = XComGameState_Unit(History.GetGameStateForObjectID(DarkXComHQ.Squad[i].ObjectID));
+			InfoState = class'UnitDarkXComUtils'.static.GetDarkXComComponent(CurrentDarkUnit);
+			if(InfoState != none && !InfoState.bAlreadyHandled)
+			{
+				//`log(CurrentDarkUnit.GetFullName() $ " with the class " $ InfoState.GetClassName() $ " isn't spawned in by the game yet.", ,'DarkXCom');
+				return false; // this squad has yet to have a combat unit attached to it, we didn't spawn people at the start here
+			}
+		}
+
+		return true; // everybody meant to be here already is on the mission, ignore our check
+	}
+	return false; // no squad is meant to be on this mission
+}
+// this is for getting dark skrimisher character templates that may exist in the pool
+static function array<XComGameState_Unit> GetSkirmCharPoolCandidates(X2CharacterTemplate Template)
+{
+	local int i;
+	local XComGameState_Unit Unit;
+	local XComGameStateHistory History;
+	local array<XComGameState_Unit> CharacterPool, Candidates;
+	
+	Candidates.Length = 0; //remove stale data
+
+	if(none == Template) {
+		return Candidates;
+	}
+
+	if(Template.DataName == 'DarkRookie' || Template.DataName == 'DarkRookie_M2' || Template.DataName == 'DarkRookie_M3'){
+		return Candidates;
+	}
+
+	History = `XCOMHISTORY;
+	CharacterPool = `CHARACTERPOOLMGR.CharacterPool;
+
+
+	for(i = 0; i < CharacterPool.length; ++i)
+	{
+		if(class'XGCharacterGenerator_DarkXCom'.static.Filter(CharacterPool[i], Template))
+		{
+			Candidates.AddItem(CharacterPool[i]);
+		}
+	}
+
+	// skip history check
+	if(Candidates.length == 0) return Candidates;
+
+	// remove characters who have already appeared this campaign
+	foreach History.IterateByClassType(class'XComGameState_Unit', Unit)
+	{
+		if(class'UnitDarkXComUtils'.static.GetFullName(Unit) == "") 
+			continue;
+
+		//`log("Dark XCom: Unit being checked for cloning is " $ class'UnitDarkXComUtils'.static.GetFullName(Unit));
+
+		if(Unit.GetMyTemplateName() != 'SkirmisherSoldier' && Unit.GetMyTemplateName() != 'DarkSoldier') 
+		{
+			if(Candidates[i].GetName(eNameType_FullNick) == class'UnitDarkXComUtils'.static.GetFullName(Unit))
+			{
+				Candidates.Remove(i, 1); // auto remove non-skrimishers
+				--i;
+			}
+		}
+
+		for(i = 0; i < Candidates.length; ++i)
+		{	
+			//so what we're doing here is comparing every unit made in the game so far to the candidates we have in the Character Pool. 
+			//we remove candidates from consideration IF they've already been used by the game, whether for XCOM, as a Dark VIP, or for MOCX alerady.
+
+			if(Candidates[i].GetName(eNameType_FullNick) == class'UnitDarkXComUtils'.static.GetFullName(Unit) && (Unit.GetMyTemplateName() != 'DarkSoldier' || (Unit.GetMyTemplateName() == 'DarkSoldier' && Template.DataName == 'DarkSoldier')))
+			{
+				//explanation: if this is for a tactical proxy, do not remove the strategic characters from consideration. If this is for a strategic character, then act as normal
+				Candidates.Remove(i, 1);
+				--i;
+			}
+		}
+	}
+
+	return Candidates;
+}
+
 static function DoReclaimedAppearance(XComGameState NewGameState, out XComGameState_Unit UnitState)
 {
-	local XComGameState_Unit SkirmState;
+	local XComGameState_Unit SkirmState, Unit;
+	local array<XComGameState_Unit> Characters;
 	local X2CharacterTemplate CharTemplate;
 	local XGCharacterGenerator CharacterGenerator;
 	local TSoldier SkirmAppearance;
 	local int FirstNameMLength, FirstNameFLength, LastNameLength;
 	local string FirstName, LastName, Nickname;
+	local bool FoundCandidate;
 
-	FirstNameMLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkMFirstNames.Length;
-	FirstNameFLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkFFirstNames.Length;
-	LastNameLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkLastNames.Length;
-
+	FoundCandidate = false;
+	Characters = GetSkirmCharPoolCandidates(class'X2CharacterTemplateManager'.static.GetCharacterTemplateManager().FindCharacterTemplate('DarkSoldier'));	
 	CharTemplate = class'X2CharacterTemplateManager'.static.GetCharacterTemplateManager().FindCharacterTemplate('SkirmisherSoldier');
-	CharacterGenerator = `XCOMGRI.Spawn(CharTemplate.CharacterGeneratorClass);
-	SkirmState = CharTemplate.CreateInstanceFromTemplate(NewGameState);
-	SkirmState.kAppearance.iGender = UnitState.kAppearance.iGender; //this gives us an appearance to sync with the unit we have
-	SkirmAppearance = CharacterGenerator.CreateTSoldierFromUnit(SkirmState, NewGameState);
-	CharacterGenerator.Destroy(); //destroy the generator so it doesn't take up memory more than it needs to
+	if(Characters.Length > 0)
+	{
+		// pick one at random
+		Unit = Characters[`SYNC_RAND_STATIC(Characters.Length)];
+		CharacterGenerator = `XCOMGRI.Spawn(CharTemplate.CharacterGeneratorClass);
+		SkirmAppearance = CharacterGenerator.CreateTSoldierFromUnit(Unit, NewGameState);
+		CharacterGenerator.Destroy(); //destroy the generator so it doesn't take up memory more than it needs to
 
-	UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
-	UnitState.kAppearance.nmHead = SkirmAppearance.kAppearance.nmHead;
-	UnitState.kAppearance.nmHaircut = SkirmAppearance.kAppearance.nmHaircut;
-	UnitState.kAppearance.iHairColor = SkirmAppearance.kAppearance.iHairColor;
-	UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
-	UnitState.kAppearance.nmBeard = SkirmAppearance.kAppearance.nmBeard;
-	UnitState.kAppearance.iRace = SkirmAppearance.kAppearance.iRace;
-	UnitState.kAppearance.nmScars = SkirmAppearance.kAppearance.nmScars;
+		UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
+		UnitState.kAppearance.nmHead = SkirmAppearance.kAppearance.nmHead;
+		UnitState.kAppearance.nmHaircut = SkirmAppearance.kAppearance.nmHaircut;
+		UnitState.kAppearance.iHairColor = SkirmAppearance.kAppearance.iHairColor;
+		UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
+		UnitState.kAppearance.nmBeard = SkirmAppearance.kAppearance.nmBeard;
+		UnitState.kAppearance.iRace = SkirmAppearance.kAppearance.iRace;
+		UnitState.kAppearance.nmScars = SkirmAppearance.kAppearance.nmScars;
+		UnitState.kAppearance.iGender = SkirmAppearance.kAppearance.iGender;
+		UnitState.SetUnitName(Unit.GetFirstName(), UNit.GetLastName(), Unit.GetNickname());
+		
+		SkirmAppearance.kAppearance = UnitState.kAppearance;
+
+		UnitState.SetTAppearance(SkirmAppearance.kAppearance); //this should sync the appearance with any potential new gender)
+	}
 
 
-	FirstName = UnitState.kAppearance.iGender == eGender_Female ? class'X2StrategyElement_XpackCountries'.default.m_arrSkMFirstNames[`SYNC_RAND_STATIC(FirstNameMLength)] :  class'X2StrategyElement_XpackCountries'.default.m_arrSkFFirstNames[`SYNC_RAND_STATIC(FirstNameFLength)];
-	LastName = class'X2StrategyElement_XpackCountries'.default.m_arrSkLastNames[`SYNC_RAND_STATIC(LastNameLength)];
+	if(!FoundCandidate)
+	{
+		FirstNameMLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkMFirstNames.Length;
+		FirstNameFLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkFFirstNames.Length;
+		LastNameLength = class'X2StrategyElement_XpackCountries'.default.m_arrSkLastNames.Length;
 
-	NickName = UnitState.GetNickName();
-	UnitState.SetUnitName(Firstname, LastName, NickName);
+		
+		CharacterGenerator = `XCOMGRI.Spawn(CharTemplate.CharacterGeneratorClass);
+		SkirmState = CharTemplate.CreateInstanceFromTemplate(NewGameState);
+		SkirmState.kAppearance.iGender = UnitState.kAppearance.iGender; //this gives us an appearance to sync with the unit we have
+		SkirmAppearance = CharacterGenerator.CreateTSoldierFromUnit(SkirmState, NewGameState);
+		CharacterGenerator.Destroy(); //destroy the generator so it doesn't take up memory more than it needs to
+
+		UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
+		UnitState.kAppearance.nmHead = SkirmAppearance.kAppearance.nmHead;
+		UnitState.kAppearance.nmHaircut = SkirmAppearance.kAppearance.nmHaircut;
+		UnitState.kAppearance.iHairColor = SkirmAppearance.kAppearance.iHairColor;
+		UnitState.kAppearance.nmVoice = SkirmAppearance.kAppearance.nmVoice;
+		UnitState.kAppearance.nmBeard = SkirmAppearance.kAppearance.nmBeard;
+		UnitState.kAppearance.iRace = SkirmAppearance.kAppearance.iRace;
+		UnitState.kAppearance.nmScars = SkirmAppearance.kAppearance.nmScars;
+
+
+		FirstName = UnitState.kAppearance.iGender == eGender_Female ? class'X2StrategyElement_XpackCountries'.default.m_arrSkMFirstNames[`SYNC_RAND_STATIC(FirstNameMLength)] :  class'X2StrategyElement_XpackCountries'.default.m_arrSkFFirstNames[`SYNC_RAND_STATIC(FirstNameFLength)];
+		LastName = class'X2StrategyElement_XpackCountries'.default.m_arrSkLastNames[`SYNC_RAND_STATIC(LastNameLength)];
+
+		NickName = UnitState.GetNickName();
+		UnitState.SetUnitName(Firstname, LastName, NickName);
+	}
 }
 
 static function BuyPsiAbility(XComGameState_Unit UnitState, XComGameState NewGameState, XComGameState_Unit_DarkXComInfo InfoState)
@@ -150,16 +299,34 @@ static function GiveSoldierToXCOM(XComGameState_Unit MissionUnitState, XComGameS
     local XComGameState_Unit UnitState;
 	local int idx, NewRank, StartingIdx;
 	local XComGameState_Item WeaponState;
-	local name UnitClass;
+	local name UnitClass, DarkClass;
 	local X2DarkSoldierClassTemplate MOCXTemplate;
 	local X2SoldierClassTemplate ClassTemplate;
-
+	local name TemplarPawn;
 	History = `XCOMHistory;
 	CharTemplateMgr = class'X2CharacterTemplateManager'.static.GetCharacterTemplateManager();
 	CharacterTemplate = CharTemplateMgr.FindCharacterTemplate('Soldier'); //we know all soldiers we'll be getting are human only...
+	MOCXTemplate = class'UnitDarkXComUtils'.static.FindDarkClassTemplate(InfoState.GetClassName());
+	TemplarPawn = '';
+	if(MOCXTemplate.CounterpartClass.Length > 1)
+	{
+		DarkClass = MOCXTemplate.CounterpartClass[`SYNC_RAND_STATIC(MOCXTemplate.CounterpartClass.Length)]; // pick a random class
+	}
+	else
+	{
+		DarkClass = MOCXTemplate.CounterpartClass[0]; // pick just the first class 
+	}
+	ClassTemplate = class'X2SoldierClassTemplateManager'.static.GetSoldierClassTemplateManager().FindSoldierClassTemplate(DarkClass);
 
 	if(InfoState.GetClassName() == 'DarkReclaimed' )
 		CharacterTemplate = CharTemplateMgr.FindCharacterTemplate('SkirmisherSoldier'); //unless it's a reclaimed
+
+	if(InfoState.GetClassName() == 'DarkZealot' )
+		CharacterTemplate = CharTemplateMgr.FindCharacterTemplate('TemplarSoldier'); // TODO: FIX THIS - this really should be modular instead of requiring hardcoding
+
+	If(ClassTemplate.DataName == 'Reaper')
+		CharacterTemplate = CharTemplateMgr.FindCharacterTemplate('ReaperSoldier');
+
 
 	XComHQ = XComGameState_HeadquartersXCom(History.GetSingleGameStateObjectForClass(class'XComGameState_HeadquartersXCom'));
 	XComHQ = XComGameState_HeadquartersXCom(NewGameState.ModifyStateObject(class'XComGameState_HeadquartersXCom', XComHQ.ObjectID));
@@ -169,37 +336,58 @@ static function GiveSoldierToXCOM(XComGameState_Unit MissionUnitState, XComGameS
 	// Create the new unit and make sure she has the best gear available (will also update to appropriate armor customizations)
 	UnitState = CharacterTemplate.CreateInstanceFromTemplate(NewGameState);
 
+	if(InfoState.GetClassName() == 'DarkZealot')
+	{
+		TemplarPawn = UnitState.kAppearance.nmPawn;
+	}
+
 	// set appearance first before we do anything else
 	UnitState.SetTAppearance(MissionUnitState.kAppearance);
+
+	if(TemplarPawn != '')
+	{
+		UnitState.kAppearance.nmPawn = TemplarPawn;
+	}
 	UnitState.SetCharacterName(MissionUnitState.GetFirstName(), MissionUnitState.GetLastName(), MissionUnitState.GetNickName());
 	UnitState.ApplyInventoryLoadout(NewGameState);
 	NewRank = InfoState.GetRank();
 	UnitState.SetXPForRank(NewRank);
 	UnitState.StartingRank = NewRank;
 	StartingIdx = 0;
-
+	UnitClass = '';
 	if(UnitState.GetMyTemplate().DefaultSoldierClass != '' && UnitState.GetMyTemplate().DefaultSoldierClass != class'X2SoldierClassTemplateManager'.default.DefaultSoldierClass)
 	{
 		// Some character classes start at squaddie on creation
 		StartingIdx = 1;
 	}
-	MOCXTemplate = class'UnitDarkXComUtils'.static.FindDarkClassTemplate(InfoState.GetClassName());
-	ClassTemplate = class'X2SoldierClassTemplateManager'.static.GetSoldierClassTemplateManager().FindSoldierClassTemplate(MOCXTemplate.CounterpartClass);
 
 	if(ClassTemplate != none)
 	{
-		if(ClassTemplate.NumInDeck > 0 || ClassTemplate.DataName == 'PsiOperative')
+	
+			`log("We found a working counterpart class for " $ MOCXTemplate.DataName $ " , which is " $ ClassTemplate.DataName , ,'DarkXCom');
 			UnitClass = ClassTemplate.DataName; //we don't need to do this for skirmishers since they already start at squaddie
+
 	}
 
+	if(ClassTemplate.DataName != 'PsiOperative' && ClassTemplate.NumInDeck < 1 && ClassTemplate.NumInForcedDeck < 1) // invalid class
+	{
+		//we assume psi operatives are always valid since no mod dummies them out
+		// we allow usage of classes meant to be trainable only since MOCX may have a counterpart class
+		// we do the same for classes meant to be random/reward only since again, MOCX may have a counterpart class
+		// if neither are true, remove the class name;
+		`log("Unfortuantely, this class is invalid as a counterpart to MOCX: " $ ClassTemplate.DataName , ,'DarkXCom');
+		UnitClass = '';
+	}
 	for (idx = StartingIdx; idx < NewRank; idx++)
 	{
+		
 		// Rank up to squaddie
 		if (idx == 0)
 		{
 			if(UnitClass == '')
 			{
 				UnitState.RankUpSoldier(NewGameState, ResistanceHQ.SelectNextSoldierClass());
+				`log("No valid counterpart class, so we are instead using" $ UnitState.GetSoldierClassTemplateName() , ,'DarkXCom');
 			}
 			if(UnitClass != '')
 			{
@@ -255,7 +443,7 @@ static function GiveSoldierToXCOM(XComGameState_Unit MissionUnitState, XComGameS
 
 }
 
-static function bool WasCaptureSuccessful(XComGameState_Unit_DarkXComInfo InfoState, int LostHP)
+static function bool WasCaptureSuccessful(XComGameState_Unit_DarkXComInfo InfoState, int LostHP, bool WasMindControlled)
 {
 	local int CaptureChance, CapturePenalty, Roll;
 
@@ -275,6 +463,10 @@ static function bool WasCaptureSuccessful(XComGameState_Unit_DarkXComInfo InfoSt
 	if(CaptureChance <= 0)
 		CaptureChance = 1; //pity percent
 
+	if(WasMindControlled)
+	{
+		CaptureChance *= 2; //double for MC'd MOCX.
+	}
 	`log("Capture Chance for MOCX unit is " $ CaptureChance, , 'DarkXCom');
 	Roll = `SYNC_RAND_STATIC(100);
 
@@ -355,7 +547,7 @@ static function bool IsAlive(XComGameState_Unit Unit )
 
 	if (Unit != none)
 	{
-		InfoState = XComGameState_Unit_DarkXComInfo(Unit.FindComponentObject(class'XComGameState_Unit_DarkXComInfo'));
+		InfoState = GetDarkXComComponent(Unit);
 
 		return InfoState.bIsAlive;
 	}
@@ -368,7 +560,7 @@ static function bool WasCaptured(XComGameState_Unit Unit )
 
 	if (Unit != none)
 	{
-		InfoState = XComGameState_Unit_DarkXComInfo(Unit.FindComponentObject(class'XComGameState_Unit_DarkXComInfo'));
+		InfoState = GetDarkXComComponent(Unit);
 
 		return InfoState.bWasCaptured;
 	}
@@ -476,11 +668,34 @@ static function XComGameState_Unit_DarkXComInfo GetDarkXComComponent(XComGameSta
 		}
 		else //if we're here, this is a unit operating under the new system
 		{
+			if(CheckGameSTate != none)
+			{
+				foreach CheckGameState.IterateByClassType(class'XComGameState_Unit_DarkXComInfo', DarkInfoState)
+				{
+					if(Unit.GetReference().ObjectID == DarkInfoState.ActualOwnerID)
+					{
+
+						if(DarkInfoState.ClassName == '') 
+						{
+							//fix info states with no classes
+							DarkInfoState.FixInvalidClass();
+						}
+						return DarkInfoState;
+					}
+				}
+			}
+			// if we're still going, check history
 			History = `XCOMHISTORY;
 			foreach History.IterateByClassType(class'XComGameState_Unit_DarkXComInfo', DarkInfoState)
 			{
 				if(Unit.GetReference().ObjectID == DarkInfoState.ActualOwnerID)
 				{
+
+					if(DarkInfoState.ClassName == '') 
+					{
+						//fix info states with no classes
+						DarkInfoState.FixInvalidClass();
+					}
 					return DarkInfoState;
 				}
 			}
@@ -521,12 +736,12 @@ static function int AssignRecoveryTime(XComGameState_Unit Unit, XComGameState_Un
 static function bool HasContestingTags(XComGameState_MissionSite MissionState) //we need to do this seperately since we have a strategyrequirement to block the MOCX sitrep from being spawned normally
 {
 	local X2SitRepTemplateManager SitRepManager;
-	local X2SitRepTemplate SitRepTemplate;
+	local X2SitRepTemplate SitRepTemplate, OtherSitrepTemplate;
 	local XComGameStateHistory History;
 	local XComGameState_HeadquartersAlien AlienHQ; 
 	local XComGameState_HeadquartersXCom XComHQ; 
 	local MissionDefinition MissionDef;
-	local name GameplayTag;
+	local name GameplayTag, SitrepName;
 	local int ForceLevel;
 	local name Tag;
 	SitRepManager = class'X2SitRepTemplateManager'.static.GetSitRepTemplateManager();
@@ -581,8 +796,19 @@ static function bool HasContestingTags(XComGameState_MissionSite MissionState) /
 		{
 			return true;
 		}
+		
 	}
 
+	foreach MissionState.GeneratedMission.Sitreps(SitrepName)
+	{
+		OtherSitrepTemplate = SitRepManager.FindSitRepTemplate(SitrepName);
+
+		if(OtherSitrepTemplate.ExcludeGameplayTags.Find('SITREP_MOCX') != INDEX_NONE)
+		{
+			return true;
+		}
+
+	}
 	return false;
 
 
@@ -628,20 +854,37 @@ static function X2DarkSoldierClassTemplate FindDarkClassTemplate(Name DataName)
 	local X2StrategyElementTemplateManager TemplateManager;
 	local array<X2StrategyElementTemplate> Templates;
 	local X2StrategyElementTemplate Template;
+	local bool NoClass;
 
+	NoClass = DataName == ''; //if we haev no class name, go with an available class.
 	TemplateManager = class'X2StrategyElementTemplateManager'.static.GetStrategyElementTemplateManager();
 
 	Templates = TemplateManager.GetAllTemplatesOfClass(class'X2DarkSoldierClassTemplate');
-	foreach Templates(Template)
+	if(!NoClass)
 	{
-		`log("Dark XCom: Template being checked is " $ Template.DataName, ,'DarkXCom');
-		SoldierClassTemplate = X2DarkSoldierClassTemplate(Template);
+		foreach Templates(Template)
+		{
+			`log("Dark XCom: Template being checked is " $ Template.DataName, ,'DarkXCom');
+			SoldierClassTemplate = X2DarkSoldierClassTemplate(Template);
 
-		if(SoldierClassTemplate != none && DataName == SoldierClassTemplate.DataName)
+			if(SoldierClassTemplate != none && DataName == SoldierClassTemplate.DataName)
+			{
+				return SoldierClassTemplate;
+			}
+		}
+	}
+	else
+	{
+
+		Template = Templates[`SYNC_RAND_STATIC(Templates.Length)];
+		`log("Dark XCom: Template being used due to no class name is " $ Template.DataName, ,'DarkXCom');
+		SoldierClassTemplate = X2DarkSoldierClassTemplate(Template);
+		if(SoldierClassTemplate != none)
 		{
 			return SoldierClassTemplate;
 		}
 	}
+
 }
 
 static function name GetDarkPCS(XComGameState_Unit_DarkXComInfo DarkInfo)

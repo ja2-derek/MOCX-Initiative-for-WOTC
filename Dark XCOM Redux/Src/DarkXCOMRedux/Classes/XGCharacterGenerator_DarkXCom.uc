@@ -31,8 +31,47 @@ struct ClassCosmetics
 };
 
 var config(DarkCustomization) array<ClassCosmetics> SoldierAppearances;
+var config(BossData) array<ClassCosmetics> LeaderAppearances;
 
+// for boss 
+var config(BossData) bool UseSpecificCharacter;
 
+var config(BossData) string FirstName;
+var config(BossData) string LastName;
+var config(BossData) string Nickname;
+
+var config(BossData) bool UseFullArmorAppearance;
+
+function XComGameState_Unit GetLeader()
+{
+	local int i;
+	local XComGameState_Unit Unit;
+	local XComGameStateHistory History;
+	local array<XComGameState_Unit> CharacterPool, Candidates;
+	local string LeaderName;
+
+	LeaderName = (FirstName @ class'UnitDarkXcomUtils'.static.SanitizeQuotes(Nickname) @ LastName);
+	Candidates.Length = 0; //remove stale data
+
+	History = `XCOMHISTORY;
+	CharacterPool = `CHARACTERPOOLMGR.CharacterPool;
+
+	// skip history check
+	if(CharacterPool.length == 0) return none;
+
+	// remove characters who have already appeared this campaign
+	foreach CharacterPool(Unit)
+	{
+		if(Unit.GetName(eNameType_FullNick) == LeaderName)
+		{
+			break;
+		}
+
+	}
+
+	return Unit;
+}
+ 
 function XComGameState_Unit GetSoldier(name CharacterTemplateName, out name ClassName)
 {
 	local XComGameState_HeadquartersDarkXCom DarkXComHQ;
@@ -57,6 +96,7 @@ function XComGameState_Unit GetSoldier(name CharacterTemplateName, out name Clas
 
 		InfoState = class'UnitDarkXComUtils'.static.GetDarkXComComponent(Unit);
 
+		
 		SameClass = MatchNames(CharacterTemplateName, InfoState.GetClassName());
 
 		if(SameClass && !InfoState.bCosmeticDone)
@@ -125,7 +165,8 @@ function bool MatchNames(name CharacterTemplateName, name InfoName)
 static function name GetClassName(name CharacterTemplateName)
 {
 	local name ActualName;
-
+	local string ClassString;
+	local int splitIdx;
 	ActualName = CharacterTemplateName;
 
 	if(ActualName == 'DarkGrenadier_M2' || ActualName == 'DarkGrenadier_M3')
@@ -165,6 +206,13 @@ static function name GetClassName(name CharacterTemplateName)
 
 	}
 
+	// search for an underscore from the right, if none of the above worked
+	splitIdx = InStr(ActualName, "_", true);
+	if (splitIdx != INDEX_NONE)
+	{
+		//drop the suffix
+		ActualName = name(Left(ActualName, splitIdx));
+	}
 
 	return ActualName;
 }
@@ -184,7 +232,7 @@ function TSoldier CreateTSoldier( optional name CharacterTemplateName, optional 
 	HasClassAppearance = false;
 	ArmorName = GetArmorName(CharacterTemplateName);
 	//so first, we just try to get our appearance from DarkXComHQ if applicable.
-	if(CharacterTemplateName != 'DarkRookie' && CharacterTemplateName != 'DarkRookie_M2' && CharacterTemplateName != 'DarkRookie_M3' && CharacterTemplateName != 'DarkSoldier')
+	if(CharacterTemplateName != 'MOCX_Leader' && CharacterTemplateName != 'DarkRookie' && CharacterTemplateName != 'DarkRookie_M2' && CharacterTemplateName != 'DarkRookie_M3' && CharacterTemplateName != 'DarkSoldier')
 	{
 
 		Unit = GetSoldier(CharacterTemplateName, DarkClassName);
@@ -260,16 +308,22 @@ function TSoldier CreateTSoldier( optional name CharacterTemplateName, optional 
 	if(DarkClassName == '')
 		DarkClassName = GetClassName(CharacterTemplateName);
 
+	
+	if(CharacterTemplateName == 'MOCX_Leader' && UseSpecificCharacter)
+	{
+		Unit = GetLeader();
+		result = super.CreateTSoldier('Soldier', EGender(Unit.kAppearance.iGender), Unit.kAppearance.nmFlag, Unit.kAppearance.iRace, ArmorName);
+	}
 
 	// copy name
-	if(Unit != none && UsingCharPool)
+	if(Unit != none && UsingCharPool || CharacterTemplateName == 'MOCX_Leader')
 	{
 		result.strFirstName = Unit.GetFirstName();
 		result.strLastName = Unit.GetLastName();
 		result.strNickName = Unit.GetNickName();
 		result.kAppearance.iGender = Unit.kAppearance.iGender;
 
-		if(DarkClassName != 'DarkReclaimed')
+		if(DarkClassName != 'DarkReclaimed' || CharacterTemplateName != 'DarkReclaimed' || CharacterTemplateName != 'DarkReclaimed_M2' || CharacterTemplateName != 'DarkReclaimed_M3')
 		{
 			result.kAppearance.nmHead = Unit.kAppearance.nmHead;
 			result.kAppearance.nmHaircut = Unit.kAppearance.nmHaircut;
@@ -318,7 +372,7 @@ function TSoldier CreateTSoldier( optional name CharacterTemplateName, optional 
 	}
 	result.nmCountry = 'Country_ADVENT';
 	result.kAppearance.nmFlag = 'Country_ADVENT';
-	if(result.kAppearance.iGender == eGender_Male)
+	if(result.kAppearance.iGender == eGender_Male && CharacterTemplateName != 'MOCX_Leader')
 	{
 		foreach SoldierAppearances(PossibleAppearance)
 		{
@@ -447,8 +501,137 @@ function TSoldier CreateTSoldier( optional name CharacterTemplateName, optional 
 
 		}
 	}
+	else if (result.kAppearance.iGender == eGender_Male &&  CharacterTemplateName == 'MOCX_Leader')
+	{
+		foreach LeaderAppearances(PossibleAppearance)
+		{
+			//class and armor specific appearance first
+			if((PossibleAppearance.ArmorName == ArmorName || ArmorName == '' || (PossibleAppearance.ArmorName == '' && PossibleAppearance.DarkClassName != '')) && PossibleAppearance.DarkClassName == DarkClassName && PossibleAppearance.iGender == eGender_Male && !HasClassAppearance) //don't add if we already have a class appearance
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
 
-	if(result.kAppearance.iGender == eGender_Female)
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				HasClassAppearance = true;
+				`log("Dark XCOM: made class restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+			}
+			//then armor specific
+			if((PossibleAppearance.ArmorName == ArmorName || ArmorName == '') && PossibleAppearance.DarkClassName == '' && PossibleAppearance.iGender == eGender_Male && !HasClassAppearance && !HasAppearance) //don't add if we already have a standard appearance, OR we already have a class appearance
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
+
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
+
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				HasAppearance = true;
+				`log("Dark XCOM: made armour restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+			}
+			//then general
+			if(PossibleAppearance.ArmorName == '' && PossibleAppearance.DarkClassName == '' && PossibleAppearance.iGender == eGender_Male && !HasClassAppearance && !HasAppearance) //don't add if we already have a standard appearance, OR we already have a class appearance
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
+
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
+
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				//no appearance bool because we don't want order of elements to affect things: we go through the whole list looking for a more solid match
+				`log("Dark XCOM: made general restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+			}
+
+		}
+	}
+
+	if(result.kAppearance.iGender == eGender_Female && CharacterTemplateName != 'MOCX_Leader')
 	{
 		foreach SoldierAppearances(PossibleAppearance)
 		{
@@ -580,12 +763,146 @@ function TSoldier CreateTSoldier( optional name CharacterTemplateName, optional 
 
 		}
 	}
+	else if(result.kAppearance.iGender == eGender_Female && CharacterTemplateName == 'MOCX_Leader')
+	{
+		foreach LeaderAppearances(PossibleAppearance)
+		{
+			if((PossibleAppearance.ArmorName == ArmorName || ArmorName == '' || (PossibleAppearance.ArmorName == '' && PossibleAppearance.DarkClassName != '')) && PossibleAppearance.DarkClassName == DarkClassName && PossibleAppearance.iGender == eGender_Female && !HasClassAppearance) //don't add if we already have a class appearance
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
 
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
 
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				HasClassAppearance = true;
+				`log("Dark XCOM: made class restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+				//break;
+			}
+
+			if((PossibleAppearance.ArmorName == ArmorName || ArmorName == '') && PossibleAppearance.DarkClassName == '' && PossibleAppearance.iGender == eGender_Female && !HasClassAppearance && !HasAppearance)
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
+
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
+
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				HasAppearance = true;
+				`log("Dark XCOM: made armour restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+				//break;
+			}
+
+			if(PossibleAppearance.ArmorName == '' && PossibleAppearance.DarkClassName == '' && PossibleAppearance.iGender == eGender_Female  && !HasClassAppearance && !HasAppearance)
+			{
+				result.kAppearance.nmTorso = PossibleAppearance.Torso;
+				result.kAppearance.nmLegs = PossibleAppearance.Legs;
+				result.kAppearance.nmArms = PossibleAppearance.Arms;
+				result.kAppearance.nmLeftArm = PossibleAppearance.LeftArm;
+				result.kAppearance.nmRightArm = PossibleAppearance.RightArm;
+				result.kAppearance.nmLeftArmDeco = PossibleAppearance.LeftArmDeco;
+				result.kAppearance.nmRightArmDeco = PossibleAppearance.RightArmDeco;
+				result.kAppearance.nmLeftForearm = PossibleAppearance.LeftForearm;
+				result.kAppearance.nmRightForearm = PossibleAppearance.RightForearm;
+				result.kAppearance.nmThighs = PossibleAppearance.Thighs;
+				result.kAppearance.nmShins = PossibleAppearance.Shins;
+				result.kAppearance.nmTorsoDeco = PossibleAppearance.TorsoDeco;
+
+				if(PossibleAppearance.Voice != '')
+				{
+					result.kAppearance.nmVoice = PossibleAppearance.Voice;
+				}
+				if(PossibleAppearance.Flag != '')
+				{
+					result.nmCountry = PossibleAppearance.Flag;
+					result.kAppearance.nmFlag = PossibleAppearance.Flag;
+				}
+
+				if(PossibleAppearance.Helmet != '')
+				{
+					result.kAppearance.nmHelmet = PossibleAppearance.Helmet;
+				}
+				if(PossibleAppearance.FacePropUpper != '')
+				{
+					result.kAppearance.nmFacePropUpper = PossibleAppearance.FacePropUpper;
+				}
+				if(PossibleAppearance.FacePropLower != '')
+				{
+					result.kAppearance.nmFacePropLower = PossibleAppearance.FacePropLower;
+				}
+				//no appearance bool because we don't want order of elements to affect things: we go through the whole list looking for a more solid match
+				`log("Dark XCOM: made general restricted appearance for " $ CharacterTemplateName, ,'DarkXCom');
+				//break;
+			}
+
+		}
+	}
 	//result.kAppearance.nmCountry ='';
 
 	//// non-VIPs can have their appearance copied wholesale
-	if(UseEntireAppearance && Unit != none && UsingCharPool)
+	if(UseEntireAppearance && Unit != none && UsingCharPool && CharacterTemplateName != 'MOCX_Leader')
+	{
+		result.kAppearance = Unit.kAppearance;
+	}
+	else if(CharacterTemplateName == 'MOCX_Leader' && UseFullArmorAppearance && Unit != none )
 	{
 		result.kAppearance = Unit.kAppearance;
 	}
@@ -635,6 +952,16 @@ function array<XComGameState_Unit> GetCharPoolCandidates(X2CharacterTemplate Tem
 			continue;
 
 		//`log("Dark XCom: Unit being checked for cloning is " $ class'UnitDarkXComUtils'.static.GetFullName(Unit));
+		
+		if(Unit.GetMyTemplateName() == 'SkirmisherSoldier' && Unit.GetMyTemplateName() != 'DarkSoldier') 
+		{
+			if(Candidates[i].GetName(eNameType_FullNick) == class'UnitDarkXComUtils'.static.GetFullName(Unit))
+			{
+				Candidates.Remove(i, 1); // auto remove skrimishers
+				--i;
+			}
+		}
+
 
 		for(i = 0; i < Candidates.length; ++i)
 		{	
@@ -653,7 +980,7 @@ function array<XComGameState_Unit> GetCharPoolCandidates(X2CharacterTemplate Tem
 	return Candidates;
 }
 
-function bool Filter(XComGameState_Unit Unit, X2CharacterTemplate CharacterTemplate)
+static function bool Filter(XComGameState_Unit Unit, X2CharacterTemplate CharacterTemplate)
 {
 	// bugfix for CharacterPoolManager, allow human characters to be anything
 	if((Unit.GetMyTemplateName() != 'Soldier' || Unit.GetMyTemplateName() != 'SkirmisherSoldier') && Unit.GetMyTemplateName() != CharacterTemplate.DataName)
@@ -662,10 +989,10 @@ function bool Filter(XComGameState_Unit Unit, X2CharacterTemplate CharacterTempl
 	if (CharacterTemplate.bUsePoolSoldiers && Unit.bAllowedTypeSoldier && CharacterTemplate.bUsePoolDarkVIPs && Unit.bAllowedTypeDarkVIP)
 		return true;
 
-	if (CharacterTemplate.bUsePoolSoldiers && Unit.bAllowedTypeSoldier && SoldiersOnly)
+	if (CharacterTemplate.bUsePoolSoldiers && Unit.bAllowedTypeSoldier && default.SoldiersOnly)
 		return true;
 
-	if (CharacterTemplate.bUsePoolDarkVIPs && Unit.bAllowedTypeDarkVIP && DarkVIPsOnly)
+	if (CharacterTemplate.bUsePoolDarkVIPs && Unit.bAllowedTypeDarkVIP && default.DarkVIPsOnly)
 		return true;
 
 	return false;

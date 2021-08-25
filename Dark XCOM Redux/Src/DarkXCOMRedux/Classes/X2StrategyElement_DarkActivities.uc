@@ -27,6 +27,7 @@ static function X2DataTemplate CreateCancelMOCXProjectTemplate()
 	Template.OverworldMeshPath = "UI_3D.Overwold_Final.CovertAction";
 	Template.RequiredFactionInfluence = eFactionInfluence_Respected;
 	Template.bDisplayRequiresAvailable = true;
+	Template.bDisplayIgnoresInfluence = true;
 
 	Template.Narratives.AddItem('CovertActionNarrative_MOCXCancelProject');
 
@@ -83,6 +84,7 @@ static function X2DataTemplate CreateDarkTrainingTemplate()
 	Template.RequiredFactionInfluence = eFactionInfluence_Respected;
 	Template.bForceCreation = true;
 	Template.bUnique = true;
+	Template.bDisplayIgnoresInfluence = true;
 
 	Template.Narratives.AddItem('CovertActionNarrative_MOCXTraining');
 
@@ -110,6 +112,7 @@ static function X2DataTemplate CreateDarkAssaultTemplate()
 	Template.RequiredFactionInfluence = eFactionInfluence_Influential;
 	Template.bForceCreation = true;
 	Template.bUnique = true;
+	Template.bDisplayIgnoresInfluence = true;
 
 	Template.Narratives.AddItem('CovertActionNarrative_MOCXAssault');
 

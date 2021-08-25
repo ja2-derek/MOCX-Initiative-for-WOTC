@@ -26,7 +26,7 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(CreateIntimidateTrigger());
 	Templates.AddItem(CreateFakeBleedout());
 	Templates.AddItem(CreateFakeBleedoutTrigger());
-	//Templates.AddItem(CreateDarkKillCounter());
+	Templates.AddItem(CreateBleedoutNoDetection());
 
 
 	Templates.AddItem(AddSMGConventionalBonusAbility());
@@ -58,6 +58,40 @@ static function array<X2DataTemplate> CreateTemplates()
 	Templates.AddItem(OddNerfThree());
 
 	return Templates;
+}
+
+static function X2DataTemplate CreateBleedoutNoDetection()
+{
+	local X2AbilityTemplate Template;
+	local X2Effect_PersistentStatChange ShieldEffect;
+	local X2AbilityTrigger_EventListener EventTrigger;
+	`CREATE_X2ABILITY_TEMPLATE(Template, 'NoBleedoutDetection');
+
+	Template.IconImage = "img:///UILibrary_XPACK_Common.PerkIcons.str_immunetoexplosives";
+	Template.AbilitySourceName = 'eAbilitySource_Perk';
+	Template.eAbilityIconBehaviorHUD = EAbilityIconBehavior_NeverShow;
+	Template.Hostility = eHostility_Neutral;
+	Template.bDontDisplayInAbilitySummary = true;
+
+	Template.AbilityToHitCalc = default.DeadEye;
+	Template.AbilityTargetStyle = default.SelfTarget;
+	EventTrigger = new class'X2AbilityTrigger_EventListener';
+	EventTrigger.ListenerData.Deferral = ELD_OnStateSubmitted;
+	EventTrigger.ListenerData.EventID = 'UnitBleedingOut';
+	EventTrigger.ListenerData.Filter = eFilter_Unit;
+	EventTrigger.ListenerData.EventFn = class'XComGameState_Ability'.static.AbilityTriggerEventListener_Self;
+	Template.AbilityTriggers.AddItem(EventTrigger);
+
+	ShieldEffect = new class'X2Effect_PersistentStatChange';
+	ShieldEffect.BuildPersistentEffect(1, true, true, true);
+	ShieldEffect.AddPersistentStatChange(eStat_DetectionRadius, -60);
+	Template.AddTargetEffect(ShieldEffect);
+
+	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
+
+
+	return Template;
+
 }
 static function X2DataTemplate OddNerfThree()
 {
@@ -779,7 +813,7 @@ static function X2DataTemplate CreateDarkEvac()
 	local X2Effect_Persistent EscapeEffect;
 	local X2AbilityTrigger_PlayerInput Trigger;
 	local X2AbilityCooldown          Cooldown;
-	local X2Condition_DarkEvac			DarkEvac;
+	//local X2Condition_DarkEvac			DarkEvac;
 	local X2AbilityTrigger_EventListener EventListener;
 	local X2Condition_UnitStatCheck         UnitStatCheckCondition; //explicit check for HP
 	Template= new(None, string('RM_DarkEvac')) class'X2AbilityTemplate'; Template.SetTemplateName('RM_DarkEvac');;;
@@ -797,8 +831,8 @@ static function X2DataTemplate CreateDarkEvac()
 	Template.AbilityShooterConditions.AddItem(UnitStatCheckCondition);
 
 
-	DarkEvac = new class'X2Condition_DarkEvac';
-	Template.AbilityTargetConditions.AddItem(DarkEvac);
+	//DarkEvac = new class'X2Condition_DarkEvac';
+	//Template.AbilityShooterConditions.AddItem(DarkEvac);
 
 	Template.AbilityToHitCalc = default.DeadEye;
 	Template.AbilityTargetStyle = default.SelfTarget;
@@ -808,13 +842,13 @@ static function X2DataTemplate CreateDarkEvac()
 	Template.AbilityTriggers.AddItem(Trigger);
 
 
-	EventListener = new class'X2AbilityTrigger_EventListener';
-	EventListener.ListenerData.Deferral = ELD_OnStateSubmitted;
-	EventListener.ListenerData.EventID = 'UnitBleedingOut'; //auto-calls for evac if bleeding out
-	EventListener.ListenerData.Filter = eFilter_Unit;
-	EventListener.ListenerData.EventFn = class'XComGameState_Ability'.static.AbilityTriggerEventListener_Self;
-	EventListener.ListenerData.Priority = 45; //should fire before the game does anything else to the unit
-	Template.AbilityTriggers.AddItem(EventListener);
+	//EventListener = new class'X2AbilityTrigger_EventListener';
+	//EventListener.ListenerData.Deferral = ELD_OnStateSubmitted;
+	//EventListener.ListenerData.EventID = 'UnitBleedingOut'; //auto-calls for evac if bleeding out
+	//EventListener.ListenerData.Filter = eFilter_Unit;
+	//EventListener.ListenerData.EventFn = class'XComGameState_Ability'.static.AbilityTriggerEventListener_Self;
+	//EventListener.ListenerData.Priority = 45; //should fire before the game does anything else to the unit
+	//Template.AbilityTriggers.AddItem(EventListener);
 
 	EscapeEffect = new class'X2Effect_Persistent';
 	EscapeEffect.BuildPersistentEffect(2, false, false, false, eGameRule_PlayerTurnEnd);
@@ -824,7 +858,7 @@ static function X2DataTemplate CreateDarkEvac()
 
 	Cooldown = new class'X2AbilityCooldown';
 	Cooldown.iNumTurns = 5;
-	Template.AbilityCooldown = Cooldown;
+	//Template.AbilityCooldown = Cooldown;
 
 	Template.ActivationSpeech = 'EVACrequest';
 	Template.BuildNewGameStateFn = TypicalAbility_BuildGameState;
@@ -846,6 +880,7 @@ static function X2DataTemplate CreateDarkEvacTeleport()
 	local X2Effect_Persistent EscapeEffect;
 	local X2AbilityTrigger_EventListener EventListener;
 	local X2Condition_UnitStatCheck         UnitStatCheckCondition; //explicit check for HP
+	local X2Condition_UnitEffects ExcludeEffects;
 
 	Template= new(None, string('RM_EvacTeleport')) class'X2AbilityTemplate'; Template.SetTemplateName('RM_EvacTeleport');;;
 	Template.IconImage = "img:///UILibrary_PerkIcons.UIPerk_evac";
@@ -858,6 +893,13 @@ static function X2DataTemplate CreateDarkEvacTeleport()
 	UnitStatCheckCondition = new class'X2Condition_UnitStatCheck';
 	UnitStatCheckCondition.AddCheckStat(eStat_HP, 0, eCheck_GreaterThan);
 	Template.AbilityShooterConditions.AddItem(UnitStatCheckCondition);
+
+
+	// Cannot target units being carried.
+	ExcludeEffects = new class'X2Condition_UnitEffects';
+	ExcludeEffects.AddExcludeEffect(class'X2Ability_CarryUnit'.default.CarryUnitEffectName, 'AA_UnitIsImmune');
+	ExcludeEffects.AddExcludeEffect(class'X2AbilityTemplateManager'.default.BeingCarriedEffectName, 'AA_UnitIsImmune');
+	Template.AbilityShooterConditions.AddItem(ExcludeEffects);
 
 	Template.AbilityToHitCalc = default.DeadEye;
 	Template.AbilityTargetStyle = default.SelfTarget;

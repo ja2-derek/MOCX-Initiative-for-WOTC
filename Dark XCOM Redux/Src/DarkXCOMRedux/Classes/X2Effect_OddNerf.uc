@@ -7,6 +7,12 @@ function int ModifyDamageFromDestructible(XComGameState_Destructible Destructibl
 	//	destructible damage is always considered to be explosive
 	local int DamageMod;
 
+
+	if (DestructibleState.SpawnedDestructibleArchetype == class'X2Ability_ReaperAbilitySet'.default.ClaymoreDestructibleArchetype || DestructibleState.SpawnedDestructibleArchetype == class'X2Ability_ReaperAbilitySet'.default.ShrapnelDestructibleArchetype) // ignore claymore damage
+	{
+		return 0;
+	}
+
 	DamageMod = -int(float(IncomingDamage) * ExplosiveDamageReduction);
 
 	return DamageMod;

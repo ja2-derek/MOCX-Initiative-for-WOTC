@@ -100,7 +100,7 @@ static function bool IsCancelProjectAvailable(optional XComGameState NewGameStat
 	{
 		foreach History.IterateByClassType(class'XComGameState_CovertAction', ActionState)
 		{
-			if(ActionState.GetMyTemplateName() == 'CovertAction_MOCXCancelProject' && ((ActionState.bStarted && !ActionState.bCompleted) || (ActionState.bAvailable && !ActionState.bStarted))) //this is dumb but we have to account for this
+			if(ActionState.GetMyTemplateName() == 'CovertAction_MOCXCancelProject' && (ActionState.bStarted && !ActionState.bCompleted)) //this is dumb but we have to account for this
 				return false;
 		}
 		return true;

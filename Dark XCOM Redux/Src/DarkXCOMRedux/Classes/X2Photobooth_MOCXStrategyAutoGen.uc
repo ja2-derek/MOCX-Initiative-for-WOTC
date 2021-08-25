@@ -11,6 +11,8 @@ var localized array<string> SquadVictoriousStrings2;
 var localized array<string> UnitWithKillsStrings;
 var localized array<string> SoldierCapturedStrings;
 
+var localized array<string> GenericUnitSurvivor;
+
 `define RANDENTRY(arrname) `{arrname}[Rand(`{arrname}.Length)]
 
 // we will do everything similar to the normal autogen -- except that we don't actually have a specific type to filter by
@@ -21,6 +23,7 @@ enum EMOCXAutoGenType
 	eMOCXAGT_VictoriousSquad,
 	eMOCXAGT_DefeatedSquad,
 	eMOCXAGT_PromotedSoldier,
+	eMOCXAGT_SoldierSurvived,
 	eMOCXAGT_CapturedSoldier
 };
 
@@ -141,6 +144,7 @@ function TakePhoto()
 		{
 				case eMOCXAGT_VictoriousSquad:
 				case eMOCXAGT_PromotedSoldier:
+				case eMOCXAGT_SoldierSurvived:
 					AutoGenSettings.TextLayoutState = ePBTLS_PromotedSoldier;
 					break;
 				case eMOCXAGT_DefeatedSquad:
@@ -282,6 +286,10 @@ function HandlePostPhaseOne()
 		case eMOCXAGT_PromotedSoldier:
 			Photobooth.SetTextBoxString(0, class'UnitDarkXComUtils'.static.GetFullName(PosterUnit));
 			Photobooth.SetTextBoxString(1, Repl(`RANDENTRY(UnitWithKillsStrings), "%KILLS", Info.KilledXComUnits.Length));
+			break;
+		case eMOCXAGT_SoldierSurvived:
+			Photobooth.SetTextBoxString(0, class'UnitDarkXComUtils'.static.GetFullName(PosterUnit));
+			Photobooth.SetTextBoxString(1, Repl(`RANDENTRY(GenericUnitSurvivor), "%KILLS", Info.KilledXComUnits.Length));
 			break;
 		case eMOCXAGT_VictoriousSquad:
 			Photobooth.SetTextBoxString(0, `RANDENTRY(SquadVictoriousStrings1));

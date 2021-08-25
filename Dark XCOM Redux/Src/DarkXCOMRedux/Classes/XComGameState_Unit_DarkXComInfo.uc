@@ -111,6 +111,59 @@ function XComGameState_Unit_DarkXComInfo InitComponent(name DarkSoldierClass, in
 	return self;
 }
 
+function FixInvalidClass()
+{
+	local X2DarkSoldierClassTemplate ClassTemplate;
+	local name blank;
+	local int i, StatVal;
+	local array<SoldierClassAbilitySlot> AbilityTree;
+	local array<SoldierClassStatType> StatProgression;
+
+	blank = '';
+	ClassTemplate = class'UnitDarkXComUtils'.static.FindDarkClassTemplate(blank);
+	SoldierClass = ClassTemplate;
+	ClassName = ClassTemplate.DataName;
+	Rank = 1;
+	EquippedPCS = class'UnitDarkXComUtils'.static.GetDarkPCS(self);
+	AWCAbilities.Length = 0;
+	SoldierAbilities.Length = 0;
+
+	AbilityTree = ClassTemplate.GetAbilitySlots(0);
+
+	for(i = 0; i < AbilityTree.Length; i++)
+	{
+		`log("Dark XCom: Adding squaddie abilitiy - " $ ClassTemplate.GetAbilityName(0, i), ,'DarkXCom');
+		SoldierAbilities.AddItem(AbilityTree[i].AbilityType);
+	}
+
+
+	StatProgression = ClassTemplate.GetStatProgression(0);
+	for (i = 0; i < StatProgression.Length; ++i)
+	{
+		StatVal = StatProgression[i].StatAmount + `SYNC_RAND(StatProgression[i].RandStatAmount);
+
+		`log("Dark XCom: current stat value is " $ StatVal, ,'DarkXCom');
+
+		if(StatProgression[i].StatType == eStat_Will)
+			RankWill += StatVal;
+
+		if(StatProgression[i].StatType == eStat_HP && !`SecondWaveEnabled('BetaStrike'))
+			RankHP += StatVal;
+
+		if(StatProgression[i].StatType == eStat_HP && `SecondWaveEnabled('BetaStrike'))
+			RankHP += (StatVal * class'X2StrategyGameRulesetDataStructures'.default.SecondWaveBetaStrikeHealthMod); 
+
+		if(StatProgression[i].StatType == eStat_Offense)
+			RankAim += StatVal;
+
+		if(StatProgression[i].StatType == eStat_Dodge)
+			RankDodge += StatVal;
+
+		if(StatProgression[i].StatType == eStat_PsiOffense)
+			RankPsi += StatVal;
+	}
+}
+
 function array<name> GetBonusAbilities()
 {
 	local array<name> ArrayToSend;
@@ -213,21 +266,21 @@ function RankUp(int RanksBy)
 				j = k - 1;
 			}
 
-			if(Template.GetAbilityName(i, j) != '')
+			if(Template.GetAbilityName(i, j) != '' && Template.GetAbilityName(i, j) != Template.GetAbilityName(i, k))
 			{
 			SoldierAbilities.AddItem(AbilityTreeCheck[j].AbilityType); // class ranks are 1 below actual ranks. 
 			`log("Dark XCOM: Added the following ability to a MOCX hero soldier: " $ Template.GetAbilityName(i, j));
 			HeroDone = true; //added our second ability, stop
 			}
 
-			if(Template.GetAbilityName(i, j + 1) != '' && !HeroDone)
+			if(Template.GetAbilityName(i, j + 1) != '' && !HeroDone && Template.GetAbilityName(i, j + 1) != Template.GetAbilityName(i, k))
 			{
 			SoldierAbilities.AddItem(AbilityTreeCheck[j + 1].AbilityType); // class ranks are 1 below actual ranks. 
 			`log("Dark XCOM: Added the following ability to a MOCX hero soldier: " $ Template.GetAbilityName(i, j + 1));
 			HeroDone = true; //added our second ability, stop
 			}
 
-			if(Template.GetAbilityName(i, j + 2) != '' && !HeroDone)
+			if(Template.GetAbilityName(i, j + 2) != '' && !HeroDone && Template.GetAbilityName(i, j + 2) != Template.GetAbilityName(i, k))
 			{
 			SoldierAbilities.AddItem(AbilityTreeCheck[j + 2].AbilityType); // class ranks are 1 below actual ranks. 
 			`log("Dark XCOM: Added the following ability to a MOCX hero soldier: " $ Template.GetAbilityName(i, j + 2));
